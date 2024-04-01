@@ -1,7 +1,8 @@
 (menhir
+ (flags --table)
  (modules parser))
 
 (library
  (name ocamlox)
- (libraries eio eio_main eio_linux containers sedlex)
- (preprocess (pps sedlex.ppx)))
+ (libraries eio eio_main eio_linux containers sedlex menhirLib)
+ (preprocess (pps sedlex.ppx ppx_string)))

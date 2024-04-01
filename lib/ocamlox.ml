@@ -1,20 +1,36 @@
 open! ContainersLabels
 open! Eio.Std
 open Result.Infix
+module I = Parser.MenhirInterpreter
+
+let lexing_pos_to_string ({ pos_lnum; pos_bol; pos_cnum; _ } : Lexing.position)
+    =
+  let line = Int.to_string pos_lnum
+  and col = Int.to_string (pos_cnum - pos_bol) in
+  [%string "line %{line}, column %{col}"]
+
+let rec parse lexbuf chkpoint =
+  match chkpoint with
+  | I.InputNeeded _ ->
+      let token = Lexer.read lexbuf
+      and startp, endp = Sedlexing.lexing_positions lexbuf in
+      parse lexbuf @@ I.offer chkpoint (token, startp, endp)
+  | I.Shifting _ | I.AboutToReduce _ -> parse lexbuf @@ I.resume chkpoint
+  | I.HandlingError _ ->
+      let start, _ = Sedlexing.lexing_positions lexbuf in
+      Error (`Syntax [%string "Syntax error at %{lexing_pos_to_string start}"])
+  | I.Accepted ast -> Ok ast
+  | I.Rejected -> assert false
 
 let eval_string _env str =
   let buf = Sedlexing.Utf8.from_string str in
-  let gen () =
-    match Lexer.read buf with
-    | exception Lexer.SyntaxError err -> Some (Error (`Syntax err))
-    | EOF -> None
-    | tok -> Some (Ok tok)
-  in
-  Seq.of_gen gen |> List.of_seq |> Result.flatten_l
+  let startp, _ = Sedlexing.lexing_positions buf in
+  try parse buf @@ Parser.Incremental.prog startp
+  with Lexer.SyntaxError msg -> Error (`Syntax msg)
 
 let error_to_string = function
   | `Msg str -> "Error: " ^ str
-  | `Syntax str -> "Lexing error: " ^ str
+  | `Syntax str -> "Parsing error: " ^ str
 
 let eval_file path env =
   let file =
@@ -28,8 +44,9 @@ let eval_file path env =
   | Error err -> Error (error_to_string err)
 
 let repl_print stdout result =
-  let f tok = Eio.Flow.copy_string (Token.to_string tok ^ "\n") stdout in
-  List.iter ~f result
+  match result with
+  | Some ast -> Eio.Flow.copy_string (Ast.to_string ast ^ "\n") stdout
+  | None -> assert false
 
 let repl env =
   (* Can't just use [Buf_read.parse] bcs always parses until EOF -_-.
