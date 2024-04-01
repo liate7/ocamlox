@@ -1,5 +1,7 @@
 (lang dune 3.14)
 
+(using menhir 3.0)
+
 (name ocamlox)
 
 (generate_opam_files true)
@@ -7,9 +9,9 @@
 (source
  (github username/reponame))
 
-(authors "Author Name")
+(authors "Andrew Patterson")
 
-(maintainers "Maintainer Name")
+(maintainers "Andrew Patterson")
 
 (license LICENSE)
 

@@ -1,1 +1,1 @@
-(specifications->manifest (list "gcc-toolchain"))
+(specifications->manifest (list "gcc-toolchain" "autoconf"))
