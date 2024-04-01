@@ -24,7 +24,10 @@ prog:
   | e = expression; EOF { Some e }
   | EOF { None };
 
-expression: e = equality { e };
+expression:
+  | l = equality; ","; r = expression
+    { Ast.(Binary(l, Comma, r)) }
+  | e = equality { e };
 
 equality:
   | l = equality; "!="; r = comparison

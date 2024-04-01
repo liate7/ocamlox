@@ -9,6 +9,7 @@ type binop =
   | Minus
   | Times
   | Div
+  | Comma
 
 type unary_op = Negate | Not
 type value = Number of float | String of string | True | False | Nil
@@ -37,6 +38,7 @@ let binop_to_string = function
   | Minus -> "-"
   | Times -> "*"
   | Div -> "/"
+  | Comma -> "seq"
 
 let unary_op_to_string = function Negate -> "negate" | Not -> "not"
 

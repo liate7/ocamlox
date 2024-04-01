@@ -9,6 +9,7 @@ type binop =
   | Minus
   | Times
   | Div
+  | Comma
 
 type unary_op = Negate | Not
 type value = Number of float | String of string | True | False | Nil
