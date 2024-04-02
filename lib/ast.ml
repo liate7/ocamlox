@@ -1,31 +1,5 @@
-type binop =
-  | Equal
-  | Not_equal
-  | Less_than
-  | Less_equal
-  | Greater_than
-  | Greater_equal
-  | Plus
-  | Minus
-  | Times
-  | Div
-  | Comma
-
-type unary_op = Negate | Not
-type value = Number of float | String of string | True | False | Nil
-
-type expr =
-  | Binary of expr * binop * expr
-  | Unary of unary_op * expr
-  | Grouping of expr
-  | Literal of value
-
-type t = expr
-
-let number_lit f = Literal (Number f)
-let string_lit s = Literal (String s)
-
 open ContainersLabels
+include Ast_type
 
 let binop_to_string = function
   | Equal -> "="
@@ -61,3 +35,37 @@ let rec to_sexp t =
   | Literal lit -> Sexp.atom @@ literal_to_string lit
 
 let to_string t = to_sexp t |> Format.to_string Sexp.pp
+
+module I = Parser.MenhirInterpreter
+
+type error = [ `Syntax of string | `Parsing of string ]
+
+let lexing_pos_to_string ({ pos_lnum; pos_bol; pos_cnum; _ } : Lexing.position)
+    =
+  let line = Int.to_string pos_lnum
+  and col = Int.to_string (pos_cnum - pos_bol) in
+  [%string "line %{line}, column %{col}"]
+
+let of_lexbuf lexbuf =
+  let rec loop chkpoint =
+    match chkpoint with
+    | I.InputNeeded _ ->
+        let token = Lexer.read lexbuf
+        and startp, endp = Sedlexing.lexing_positions lexbuf in
+        loop @@ I.offer chkpoint (token, startp, endp)
+    | I.Shifting _ | I.AboutToReduce _ -> loop @@ I.resume chkpoint
+    | I.HandlingError _ ->
+        let start, _ = Sedlexing.lexing_positions lexbuf
+        and token = Sedlexing.Utf8.lexeme lexbuf in
+        Error
+          (`Syntax
+            [%string "Syntax error at %{lexing_pos_to_string start} (%{token})"])
+    | I.Accepted ast -> Ok ast
+    | I.Rejected ->
+        (* should only happen after a [I.HandlingError] event,
+           which we never continue from *)
+        assert false
+  in
+  let startp, _ = Sedlexing.lexing_positions lexbuf in
+  try loop @@ Parser.Incremental.prog startp
+  with Lexer.SyntaxError msg -> Error (`Parsing msg)
