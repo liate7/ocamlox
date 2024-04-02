@@ -17,7 +17,11 @@
 
 %token EOF
 
-%start <Ast.t option> prog
+%{
+	open Ast_type
+%}
+
+%start <Ast_type.t option> prog
 %%
 
 prog:
@@ -26,19 +30,19 @@ prog:
 
 expression:
   | l = equality; ","; r = expression
-    { Ast.(Binary(l, Comma, r)) }
+    { Binary(l, Comma, r) }
   | e = equality { e };
 
 equality:
   | l = equality; "!="; r = comparison
-    { Ast.(Binary(l, Not_equal, r)) }
+    { Binary(l, Not_equal, r) }
   | l = equality; "=="; r = comparison
-    { Ast.(Binary(l, Equal, r)) }
+    { Binary(l, Equal, r) }
   | e = comparison { e };
 
 comparison:
   | l = comparison; op = compare_op; r = term
-    { Ast.(Binary(l, op, r)) }
+    { Binary(l, op, r) }
   | e = term { e };
 
 compare_op:
@@ -49,28 +53,28 @@ compare_op:
 
 term:
   | l = term; "+"; r = factor
-    { Ast.(Binary(l, Plus, r)) }
+    { Binary(l, Plus, r) }
   | l = term; "-"; r = factor
-    { Ast.(Binary(l, Minus, r)) }
+    { Binary(l, Minus, r) }
   | e = factor { e };
 
 factor:
   | l = factor; "*"; r = unary
-	{ Ast.(Binary(l, Times, r)) }
+	{ Binary(l, Times, r) }
   | l = factor; "/"; r = unary
-	{ Ast.(Binary(l, Div, r)) }
+	{ Binary(l, Div, r) }
   | e = unary
     { e };
 
 unary:
-  | "!"; e = unary { Ast.(Unary(Not, e)) }
-  | "-"; e = unary { Ast.(Unary(Negate, e)) }
+  | "!"; e = unary { Unary(Not, e) }
+  | "-"; e = unary { Unary(Negate, e) }
   | e = primary         { e };
 
 primary:
-  | num = NUMBER             { Ast.number_lit num }
-  | str = STRING             { Ast.string_lit str }
-  | TRUE                     { Ast.(Literal True) }
-  | FALSE                    { Ast.(Literal False) }
-  | NIL                      { Ast.(Literal Nil) }
-  | "("; e = expression; ")" { Ast.(Grouping e) };
+  | num = NUMBER             { number_lit num }
+  | str = STRING             { string_lit str }
+  | TRUE                     { Literal True }
+  | FALSE                    { Literal False }
+  | NIL                      { Literal Nil }
+  | "("; e = expression; ")" { Grouping e };

@@ -7,7 +7,10 @@ exception SyntaxError of string
 let digit = [%sedlex.regexp? '0' .. '9']
 let frac = [%sedlex.regexp? '.', Plus digit]
 let exponent = [%sedlex.regexp? ('e' | 'E'), Opt ('-' | '+'), Plus digit]
-let float = [%sedlex.regexp? Opt '-', Plus digit, Opt frac, Opt exponent]
+
+let float =
+  [%sedlex.regexp?
+    Opt '-', (Plus digit, Opt frac, Opt exponent | "inf" | "nan")]
 
 (* Other more complicated things *)
 let identifier = [%sedlex.regexp? id_start, Star id_continue]
