@@ -1,4 +1,5 @@
 open! ContainersLabels
+open! Eio.Std
 
 type error = [ `Error of string ]
 
@@ -7,7 +8,7 @@ let error msg = Error (`Error msg)
 module Obj = struct
   type t = Nil | Bool of bool | Number of float | String of string
 
-  let to_string = function
+  let to_string ?(readable = true) = function
     | Nil -> "nil"
     | Bool true -> "true"
     | Bool false -> "false"
@@ -15,7 +16,7 @@ module Obj = struct
         if Int.of_float n |> Float.of_int =. n then
           Int.(of_float n |> to_string)
         else Float.to_string n
-    | String s -> "\"" ^ String.escaped s ^ "\""
+    | String s -> if readable then "\"" ^ String.escaped s ^ "\"" else s
 
   let to_bool = function
     | Bool b -> b
@@ -44,8 +45,40 @@ module Obj = struct
     Fun.curry (function
       | Number l, Number r -> Ok (Number (l +. r))
       | String l, String r -> Ok (String (l ^ r))
-      | l, r ->
-          error [%string "Error: can't add %{to_string l} with %{to_string r}"])
+      | l, r -> error [%string "can't add %{to_string l} with %{to_string r}"])
+end
+
+module Env = struct
+  module Map = Map.Make (Ast.Id)
+
+  type bindings = Obj.t ref Map.t
+  type t = { bindings : bindings; stdout : Eio.Flow.sink_ty r }
+
+  let of_eio_env env =
+    {
+      bindings = Map.empty;
+      stdout = (Eio.Stdenv.stdout env :> Eio.Flow.sink_ty r);
+    }
+
+  let with_binding key value { bindings; stdout } =
+    { stdout; bindings = bindings |> Map.add key (ref value) }
+
+  let get key { bindings; _ } =
+    match Map.get key bindings with
+    | Some ref -> Ok !ref
+    | None ->
+        error
+          [%string
+            "tried to reference unbound variable %{Ast.Id.to_string key}"]
+
+  let set key value { bindings; _ } =
+    match Map.get key bindings with
+    | Some ref ->
+        let prev = !ref in
+        ref := value;
+        Ok prev
+    | None ->
+        error [%string "tried to set unbound variable %{Ast.Id.to_string key}"]
 end
 
 let eval_binary_op _env op l r =
@@ -107,6 +140,57 @@ let rec eval_expr env (expr : Ast.expr) =
       eval_unary_op env op value
   | Ast.Grouping expr -> eval_expr env expr
   | Ast.Literal lit -> Ok (eval_literal lit)
+  | Ast.Variable id -> Env.get id env
+  | Ast.Assign (Variable_p id, expr) ->
+      let* value = eval_expr env expr in
+      Env.set id value env
+
+type t = Value of Obj.t | Binding of Ast.Id.t * Obj.t * Env.t | Void
+
+let rec eval_stmt env stmt =
+  let open Result.Infix in
+  match stmt with
+  | Ast.Expr e -> eval_expr env e >|= fun o -> Value o
+  | Ast.Log exprs ->
+      let stdout = env.Env.stdout in
+      let+ strs =
+        exprs
+        |> Result.map_l (fun e ->
+               eval_expr env e >|= Obj.to_string ~readable:false)
+      in
+      stdout |> Eio.Flow.copy_string (String.concat ~sep:" " strs ^ "\n");
+      Void
+  | Ast.Block stmts -> eval_block env stmts
+
+and eval_decl env decl =
+  let open Result.Infix in
+  match decl with
+  | Ast.Var (id, value) ->
+      let+ value = eval_expr env value in
+      let env = Env.with_binding id value env in
+      Binding (id, value, env)
+  | Ast.Stmt stmt -> eval_stmt env stmt
+
+(* The type difference between this and [eval] is on purpose;
+   making them the same doesn't work. *)
+and eval_block env decls =
+  let open Result.Infix in
+  let f (env, acc) decl =
+    let+ result = eval_decl env decl in
+    match result with
+    | (Value _ | Void) as not_bind -> (env, not_bind :: acc)
+    | Binding (_, _, env) as bind -> (env, bind :: acc)
+  in
+  let+ _, values = Result.fold_l f (env, []) decls in
+  values |> List.head_opt |> Option.value ~default:(Value Obj.Nil)
 
 let eval env ast =
-  match ast with Some ast -> eval_expr env ast | None -> Ok Obj.Nil
+  let open Result.Infix in
+  let f (env, acc) decl =
+    let+ result = eval_decl env decl in
+    match result with
+    | (Value _ | Void) as not_bind -> (env, not_bind :: acc)
+    | Binding (_, _, env) as bind -> (env, bind :: acc)
+  in
+  let+ env, ret = Result.fold_l f (env, []) ast in
+  (env, List.rev ret)

@@ -5,6 +5,6 @@ val to_string : t -> string
 
 type error = [ `Syntax of string | `Parsing of string ]
 
-val of_lexbuf : Sedlexing.lexbuf -> (t option, [> error ]) result
+val of_lexbuf : Sedlexing.lexbuf -> (t list, [> error ]) result
 (** Main parsing function: takes a lexbuf and returns
     either the result of parsing it or a syntax error  *)

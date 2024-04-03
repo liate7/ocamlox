@@ -21,17 +21,35 @@
 	open Ast_type
 %}
 
-%start <Ast_type.t option> prog
+%start <Ast_type.t list> program
 %%
 
-prog:
-  | e = expression; EOF { Some e }
-  | EOF { None };
+program:
+  | s = declaration; rest = program { s :: rest }
+  | EOF { [] };
+
+declaration:
+  | LET; id = IDENTIFIER; "="; e = expression; ";"
+    { Var (Id.of_string id, e) }
+  | s = statement
+    { Stmt s };
+
+statement:
+  | e = expression; ";"        { Expr e }
+  | LOG; e = expression*; ";"  { Log e }
+  | "{"; s = declaration*; "}" { Block s };
 
 expression:
   | l = equality; ","; r = expression
     { Binary(l, Comma, r) }
+  | e = assignment { e };
+
+assignment:
+  | p = place; "="; e = assignment
+    { Assign (p, e) }
   | e = equality { e };
+
+place: id = IDENTIFIER { Variable_p (Id.of_string id) }
 
 equality:
   | l = equality; "!="; r = comparison
@@ -69,7 +87,7 @@ factor:
 unary:
   | "!"; e = unary { Unary(Not, e) }
   | "-"; e = unary { Unary(Negate, e) }
-  | e = primary         { e };
+  | e = primary    { e };
 
 primary:
   | num = NUMBER             { number_lit num }
@@ -77,4 +95,5 @@ primary:
   | TRUE                     { Literal True }
   | FALSE                    { Literal False }
   | NIL                      { Literal Nil }
+  | id = IDENTIFIER          { Variable (Id.of_string id) }
   | "("; e = expression; ")" { Grouping e };

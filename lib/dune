@@ -6,4 +6,4 @@
  (name ocamlox)
  (libraries eio eio_main eio_linux containers sedlex menhirLib)
  (inline_tests)
- (preprocess (pps sedlex.ppx ppx_string ppx_inline_test ppx_inline_test)))
+ (preprocess (pps sedlex.ppx ppx_string ppx_inline_test ppx_inline_test ppx_compare)))

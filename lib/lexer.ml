@@ -13,7 +13,7 @@ let float =
     Opt '-', (Plus digit, Opt frac, Opt exponent | "inf" | "nan")]
 
 (* Other more complicated things *)
-let identifier = [%sedlex.regexp? id_start, Star id_continue]
+let identifier = [%sedlex.regexp? (id_start | '_'), Star id_continue]
 let comment = [%sedlex.regexp? "//", Star (Compl nl)]
 
 let rec read lexbuf =
