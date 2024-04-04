@@ -37,11 +37,22 @@ let rec expr_to_sexp = function
   | Variable id -> Sexp.atom @@ Id.to_string id
   | Assign (p, expr) ->
       Sexp.(list [ atom "set!"; place_to_sexp p; expr_to_sexp expr ])
+  | Logic (l, Or, r) ->
+      Sexp.(list [ atom "or"; expr_to_sexp l; expr_to_sexp r ])
+  | Logic (l, And, r) ->
+      Sexp.(list [ atom "and"; expr_to_sexp l; expr_to_sexp r ])
 
 let rec stmt_to_sexp = function
   | Expr e -> Sexp.(list [ atom "do"; expr_to_sexp e ])
   | Log e -> Sexp.(list (atom "log" :: List.map ~f:expr_to_sexp e))
+  | If { condition; if_true; if_false } ->
+      Sexp.(
+        list
+          (atom "if" :: expr_to_sexp condition :: stmt_to_sexp if_true
+          :: List.map ~f:stmt_to_sexp (Option.to_list if_false)))
   | Block s -> Sexp.(list (atom "progn" :: List.map ~f:decl_to_sexp s))
+  | While { condition; body } ->
+      Sexp.(list [ atom "while"; expr_to_sexp condition; stmt_to_sexp body ])
 
 and decl_to_sexp = function
   | Var (id, e) ->

@@ -129,6 +129,8 @@ let eval_literal =
   | Ast.False -> Bool false
   | Ast.Nil -> Nil
 
+let logic_op_condition = function Ast.Or -> Fun.id | Ast.And -> not
+
 let rec eval_expr env (expr : Ast.expr) =
   let open Result.Infix in
   match expr with
@@ -144,10 +146,21 @@ let rec eval_expr env (expr : Ast.expr) =
   | Ast.Assign (Variable_p id, expr) ->
       let* value = eval_expr env expr in
       Env.set id value env
+  | Ast.Logic (l, op, r) ->
+      let* l = eval_expr env l in
+      if Obj.to_bool l |> logic_op_condition op then Ok l else eval_expr env r
 
 type t = Value of Obj.t | Binding of Ast.Id.t * Obj.t * Env.t | Void
 
-let rec eval_stmt env stmt =
+let rec eval_while env cond body =
+  let open Result.Infix in
+  let* cond' = eval_expr env cond in
+  if Obj.to_bool cond' then
+    let* _ = eval_stmt env body in
+    eval_while env cond body
+  else Ok Void
+
+and eval_stmt env stmt =
   let open Result.Infix in
   match stmt with
   | Ast.Expr e -> eval_expr env e >|= fun o -> Value o
@@ -160,7 +173,12 @@ let rec eval_stmt env stmt =
       in
       stdout |> Eio.Flow.copy_string (String.concat ~sep:" " strs ^ "\n");
       Void
+  | Ast.If { condition; if_true; if_false } ->
+      let* cond = eval_expr env condition in
+      if Obj.to_bool cond then eval_stmt env if_true
+      else Option.map_or ~default:(Ok Void) (eval_stmt env) if_false
   | Ast.Block stmts -> eval_block env stmts
+  | Ast.While { condition; body } -> eval_while env condition body
 
 and eval_decl env decl =
   let open Result.Infix in

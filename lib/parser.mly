@@ -17,6 +17,9 @@
 
 %token EOF
 
+%nonassoc IF_NO_ELSE
+%nonassoc ELSE
+
 %{
 	open Ast_type
 %}
@@ -36,8 +39,20 @@ declaration:
 
 statement:
   | e = expression; ";"        { Expr e }
-  | LOG; e = expression*; ";"  { Log e }
-  | "{"; s = declaration*; "}" { Block s };
+  | LOG; e = expression; ";"   { Log [e] }
+  | s = if_statement           { s }
+  | "{"; s = declaration*; "}" { Block s }
+  | s = while_statement        { s }
+
+while_statement:
+  | WHILE; "("; cond = expression; ")"; body = statement
+    { While { condition = cond; body } }
+
+if_statement:
+  | IF; "("; e = expression; ")"; t = statement; ELSE; f = statement
+    { If { condition = e; if_true = t; if_false = Some f } }
+  | IF; "("; e = expression; ")"; t = statement; %prec IF_NO_ELSE
+    { If { condition = e; if_true = t; if_false = None } };
 
 expression:
   | l = equality; ","; r = expression
@@ -47,9 +62,20 @@ expression:
 assignment:
   | p = place; "="; e = assignment
     { Assign (p, e) }
-  | e = equality { e };
+  | e = logic_or { e };
 
-place: id = IDENTIFIER { Variable_p (Id.of_string id) }
+place: id = IDENTIFIER { Variable_p (Id.of_string id) };
+
+logic_or:
+  | l = logic_or; OR; r = logic_and
+    { Logic(l, Or, r) }
+  | e = logic_and { e };
+
+logic_and:
+  | l = logic_and; AND; r = equality
+    { Logic(l, And, r) }
+  | e = equality 
+    { e };
 
 equality:
   | l = equality; "!="; r = comparison

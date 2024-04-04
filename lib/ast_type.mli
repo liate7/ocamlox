@@ -13,6 +13,7 @@ type binop =
 
 type unary_op = Negate | Not
 type literal = Number of float | String of string | True | False | Nil
+type logic_op = And | Or
 
 module Id : sig
   type t
@@ -32,8 +33,15 @@ type expr =
   | Literal of literal
   | Variable of Id.t
   | Assign of place * expr
+  | Logic of expr * logic_op * expr
 
-type stmt = Expr of expr | Log of expr list | Block of decl list
+type stmt =
+  | Expr of expr
+  | Log of expr list
+  | Block of decl list
+  | If of { condition : expr; if_true : stmt; if_false : stmt option }
+  | While of { condition : expr; body : stmt }
+
 and decl = Var of Id.t * expr | Stmt of stmt
 
 type t = decl

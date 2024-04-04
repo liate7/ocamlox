@@ -29,6 +29,7 @@ let rec read lexbuf =
   | "defn" -> DEFN
   | "for" -> FOR
   | "if" -> IF
+  | "else" -> ELSE
   | "nil" -> NIL
   | "or" -> OR
   | "log" -> LOG
