@@ -53,7 +53,12 @@ let to_string t = to_sexp t |> Format.to_string Sexp.pp
 
 module I = Parser.MenhirInterpreter
 
-type error = [ `Syntax of string | `Parsing of string ]
+type checkpoint = t list I.checkpoint
+
+type error =
+  [ `Syntax of string | `Parsing of string | `Needs_input of checkpoint ]
+
+type 'a parser = Sedlexing.lexbuf -> (t list, ([> error ] as 'a)) result
 
 let lexing_pos_to_string ({ pos_lnum; pos_bol; pos_cnum; _ } : Lexing.position)
     =
@@ -61,30 +66,41 @@ let lexing_pos_to_string ({ pos_lnum; pos_bol; pos_cnum; _ } : Lexing.position)
   and col = Int.to_string (pos_cnum - pos_bol) in
   [%string "line %{line}, column %{col}"]
 
-(* TODO: handle incomplete statements, as from repl inputs *)
-(* I /think/ this looks like an extra error case with a checkpoint (or maybe a continuation?)
-   value, but piping that through looks annoyingly complicated. *)
-let of_lexbuf lexbuf =
-  let rec loop chkpoint =
-    match chkpoint with
-    | I.InputNeeded _ ->
+let parse_from_checkpoint checkpoint lexbuf =
+  let rec loop token checkpoint =
+    match checkpoint with
+    | I.InputNeeded _ -> (
         let token = Lexer.read lexbuf
         and startp, endp = Sedlexing.lexing_positions lexbuf in
-        loop @@ I.offer chkpoint (token, startp, endp)
-    | I.Shifting _ | I.AboutToReduce _ -> loop @@ I.resume chkpoint
+        match token with
+        | Parser.EOF ->
+            if I.acceptable checkpoint token startp then
+              loop (Some token) @@ I.offer checkpoint (token, startp, endp)
+            else Error (`Needs_input checkpoint)
+        | token -> loop (Some token) @@ I.offer checkpoint (token, startp, endp)
+        )
+    | I.Shifting _ | I.AboutToReduce _ -> loop token @@ I.resume checkpoint
     | I.HandlingError _ ->
         let start, _ = Sedlexing.lexing_positions lexbuf
-        and lexeme = Sedlexing.Utf8.lexeme lexbuf in
+        and lexeme = Sedlexing.Utf8.lexeme lexbuf
+        and last_token =
+          match token with
+          | None -> "at start"
+          | Some tok -> [%string "last token: %{Token.to_string tok}"]
+        in
         Error
           (`Syntax
             [%string
-              "Syntax error at %{lexing_pos_to_string start} (%{lexeme})"])
+              "Syntax error at %{lexing_pos_to_string start} (%{lexeme}) \
+               (%{last_token})"])
     | I.Accepted ast -> Ok ast
     | I.Rejected ->
         (* should only happen after a [I.HandlingError] event,
            which we never continue from *)
         assert false
   in
+  try loop None checkpoint with Lexer.SyntaxError msg -> Error (`Parsing msg)
+
+let parse lexbuf =
   let startp, _ = Sedlexing.lexing_positions lexbuf in
-  try loop @@ Parser.Incremental.program startp
-  with Lexer.SyntaxError msg -> Error (`Parsing msg)
+  parse_from_checkpoint (Parser.Incremental.program startp) lexbuf
