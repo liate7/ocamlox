@@ -44,3 +44,4 @@ let to_string t =
   | BANG_EQUAL -> "!="
   | BANG -> "!"
   | AND -> "and"
+  | LAMBDA -> "λ"

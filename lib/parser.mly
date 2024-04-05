@@ -13,7 +13,7 @@
 %token <float> NUMBER
 
 %token AND CLASS ELSE FALSE DEFN FOR IF NIL OR 
-%token LOG RETURN SUPER THIS TRUE LET WHILE
+%token LOG RETURN SUPER THIS TRUE LET WHILE LAMBDA
 
 %token EOF
 
@@ -21,6 +21,7 @@
 %nonassoc ELSE
 
 %{
+    open! ContainersLabels
 	open Ast_type
 %}
 
@@ -34,15 +35,33 @@ program:
 declaration:
   | LET; id = IDENTIFIER; "="; e = expression; ";"
     { Var (Id.of_string id, e) }
+  | d = definition { d }
   | s = statement
     { Stmt s };
 
+definition:
+  | DEFN; id = IDENTIFIER; fn = func
+    { let params, body = fn in
+      Fun (Id.of_string id, List.map ~f:Id.of_string params, body) }
+
+func:
+  | "("; params = separated_list(",", IDENTIFIER); ")"; body = statement
+    { (params, body) }
+
+block:
+  | "{"; s = declaration*; "}" { s }
+
 statement:
-  | e = expression; ";"        { Expr e }
-  | LOG; e = expression; ";"   { Log [e] }
-  | s = if_statement           { s }
-  | "{"; s = declaration*; "}" { Block s }
-  | s = while_statement        { s }
+  | e = expression; ";"      { Expr e }
+  | LOG; e = expression; ";" { Log [e] }
+  | s = if_statement         { s }
+  | s = block                { Block s }
+  | s = while_statement      { s }
+  | s = return_statement     { s }
+
+return_statement:
+  | RETURN; e = expression; ";" { Return (Some e) }
+  | RETURN; ";"                 { Return None }
 
 while_statement:
   | WHILE; "("; cond = expression; ")"; body = statement
@@ -55,8 +74,8 @@ if_statement:
     { If { condition = e; if_true = t; if_false = None } };
 
 expression:
-  | l = equality; ","; r = expression
-    { Binary(l, Comma, r) }
+  /* | l = equality; ","; r = expression */
+  /*   { Binary(l, Comma, r) } */
   | e = assignment { e };
 
 assignment:
@@ -113,7 +132,13 @@ factor:
 unary:
   | "!"; e = unary { Unary(Not, e) }
   | "-"; e = unary { Unary(Negate, e) }
-  | e = primary    { e };
+  | e = call       { e };
+
+call:
+  | f = primary; "("; args = separated_list(",", expression); ")"
+    { Call (f, args) }
+  | e = primary
+    { e }
 
 primary:
   | num = NUMBER             { number_lit num }
@@ -122,4 +147,10 @@ primary:
   | FALSE                    { Literal False }
   | NIL                      { Literal Nil }
   | id = IDENTIFIER          { Variable (Id.of_string id) }
+  | lam = lambda             { lam }
   | "("; e = expression; ")" { Grouping e };
+
+lambda:
+  | LAMBDA; fn = func
+    { let params, body = fn in
+      Lambda (List.map ~f:Id.of_string params, body) }

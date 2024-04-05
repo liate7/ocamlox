@@ -16,6 +16,7 @@ let error_to_string = function
   | `Needs_input _ -> "Parsing error: unexpected eof"
   | `Syntax str -> str
   | `Error str -> "Evaluation error: " ^ str
+  | `Return _ -> "Evaluation error: tried to return from toplevel"
 
 let eval_file path env =
   let file =

@@ -41,8 +41,19 @@ let rec expr_to_sexp = function
       Sexp.(list [ atom "or"; expr_to_sexp l; expr_to_sexp r ])
   | Logic (l, And, r) ->
       Sexp.(list [ atom "and"; expr_to_sexp l; expr_to_sexp r ])
+  | Call (f, args) ->
+      Sexp.(
+        list (atom "call" :: expr_to_sexp f :: List.map ~f:expr_to_sexp args))
+  | Lambda (params, body) ->
+      Sexp.(
+        list
+          [
+            atom "λ";
+            list (List.map ~f:Fun.(Id.to_string %> atom) params);
+            stmt_to_sexp body;
+          ])
 
-let rec stmt_to_sexp = function
+and stmt_to_sexp = function
   | Expr e -> Sexp.(list [ atom "do"; expr_to_sexp e ])
   | Log e -> Sexp.(list (atom "log" :: List.map ~f:expr_to_sexp e))
   | If { condition; if_true; if_false } ->
@@ -53,11 +64,22 @@ let rec stmt_to_sexp = function
   | Block s -> Sexp.(list (atom "progn" :: List.map ~f:decl_to_sexp s))
   | While { condition; body } ->
       Sexp.(list [ atom "while"; expr_to_sexp condition; stmt_to_sexp body ])
+  | Return s ->
+      Sexp.(list (atom "return" :: Option.to_list (Option.map expr_to_sexp s)))
 
 and decl_to_sexp = function
   | Var (id, e) ->
       Sexp.(list [ atom "let"; atom @@ Id.to_string id; expr_to_sexp e ])
   | Stmt s -> stmt_to_sexp s
+  | Fun (id, params, body) ->
+      Sexp.(
+        list
+          [
+            atom "defn";
+            atom (Id.to_string id);
+            list (List.map ~f:Fun.(Id.to_string %> atom) params);
+            stmt_to_sexp body;
+          ])
 
 let to_sexp = decl_to_sexp
 let to_string t = to_sexp t |> Format.to_string Sexp.pp

@@ -39,6 +39,7 @@ let rec read lexbuf =
   | "true" -> TRUE
   | "let" -> LET
   | "while" -> WHILE
+  | "\\" -> LAMBDA
   | '"' -> read_string (Buffer.create 17) lexbuf
   | identifier -> IDENTIFIER (Utf8.lexeme lexbuf)
   | '(' -> LEFT_PAREN

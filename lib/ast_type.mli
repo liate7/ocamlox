@@ -18,9 +18,10 @@ type logic_op = And | Or
 module Id : sig
   type t
 
+  val equal : t -> t -> bool
+  val hash : t -> int
   val of_string : string -> t
   val to_string : t -> string
-  val compare : t -> t -> int
   val ( = ) : t -> t -> bool
 end
 
@@ -34,15 +35,18 @@ type expr =
   | Variable of Id.t
   | Assign of place * expr
   | Logic of expr * logic_op * expr
+  | Call of expr * expr list
+  | Lambda of Id.t list * stmt
 
-type stmt =
+and stmt =
   | Expr of expr
   | Log of expr list
   | Block of decl list
   | If of { condition : expr; if_true : stmt; if_false : stmt option }
   | While of { condition : expr; body : stmt }
+  | Return of expr option
 
-and decl = Var of Id.t * expr | Stmt of stmt
+and decl = Var of Id.t * expr | Fun of Id.t * Id.t list * stmt | Stmt of stmt
 
 type t = decl
 
