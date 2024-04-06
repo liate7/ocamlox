@@ -1,7 +1,5 @@
-(* TODO: separate out the signature Ast_type, so no need for [module type of]? *)
-include module type of Ast_type
-
-val to_string : t -> string
+module Ast : module type of Ast
+module Id : module type of Ast.Id
 
 type checkpoint
 
@@ -10,7 +8,9 @@ type error =
 (** Needs_input errors can be continued by passing the checkpoint and
     a new lexbuf to [parse_from_checkpoint]. *)
 
-type 'a parser = Sedlexing.lexbuf -> (t list, ([> error ] as 'a)) result
+type 'a parser =
+  Sedlexing.lexbuf ->
+  ((Ast.literal, Id.t) Ast.t list, ([> error ] as 'a)) result
 
 val parse : 'a parser
 (** Main parsing function. *)

@@ -25,7 +25,7 @@
 	open Ast_type
 %}
 
-%start <Ast_type.t list> program
+%start <(Ast.literal, Ast.Id.t) Ast_type.t list> program
 %%
 
 program:

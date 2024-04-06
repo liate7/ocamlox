@@ -5,8 +5,8 @@ open Result.Infix
 let eval_string ?continue_from env str =
   let parse =
     match continue_from with
-    | None -> Ast.parse
-    | Some checkpoint -> Ast.parse_from_checkpoint checkpoint
+    | None -> Reader.parse
+    | Some checkpoint -> Reader.parse_from_checkpoint checkpoint
   in
   Sedlexing.Utf8.from_string str |> parse >>= Eval.eval env
 
@@ -36,7 +36,7 @@ let repl_print stdout result =
           stdout
     | Eval.Binding (id, obj, _) ->
         Eio.Flow.copy_string
-          [%string "// %{Ast.Id.to_string id} = %{Eval.Obj.to_string obj}\n"]
+          [%string "// %{Reader.Id.to_string id} = %{Eval.Obj.to_string obj}\n"]
           stdout
     | Eval.Void -> ()
   in
