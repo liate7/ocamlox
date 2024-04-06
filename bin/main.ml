@@ -11,11 +11,9 @@ let () =
   let file =
     Arg.(
       value
-      & pos 1 (Arg.some file) None
+      & pos 0 (Arg.some file) None
       & info [] ~docv:"SCRIPT" ~doc:"The file to eval")
   in
   let term = Term.(const run $ file)
-  and info =
-    Cmd.info ~doc:"define a set of words with DuckDuckGo's API" "ddg"
-  in
+  and info = Cmd.info ~doc:"run an ocamlox program / repl" "ocamlox" in
   Cmd.v info term |> Cmd.eval_result' |> exit
