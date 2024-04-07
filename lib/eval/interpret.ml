@@ -90,15 +90,24 @@ and eval_body env decls =
 
 and eval_apply env f args =
   let open Obj in
+  let arity_mismatch expected actual =
+    Error.of_string
+      [%string
+        "arity mismatch: expected %{Int.to_string expected} args, got \
+         %{Int.to_string @@ List.length actual}"]
+  in
   match f with
   | Builtin (_, arity, f) when arity = List.length args ->
       f (Env.auth env) args |> Result.map_err (fun s -> `Error s)
-  | Builtin (_, arity, _) ->
-      Error.of_string
-        [%string
-          "arity mismatch: expected %{Int.to_string arity} args, got \
-           %{Int.to_string @@ List.length args}"]
+  | Builtin (_, arity, _) -> arity_mismatch arity args
   | Function (_, f) -> non_builtin_apply env f args
+  | Class ({ init; _ } as c) -> (
+      let open Result.Infix in
+      let obj = Object (c, Attr.create 4) in
+      match init with
+      | Some init -> eval_apply env (Obj.bind obj init) args >|= Fun.const obj
+      | None when List.length args = 0 -> Ok obj
+      | None -> arity_mismatch 0 args)
   | _ -> Error.of_string "can't call this; can only call functions"
 
 and eval_expr env expr =
@@ -112,10 +121,17 @@ and eval_expr env expr =
       eval_unary_op env op value
   | Ast.Grouping expr -> eval_expr env expr
   | Ast.Literal lit -> Ok (eval_literal lit)
-  | Ast.Variable id -> Env.get id env
-  | Ast.Assign (Variable_p id, expr) ->
+  | Ast.Variable (Resolver.Var var) -> Env.get var env
+  | Ast.Variable (Resolver.Field (expr, attr)) ->
+      let* from = eval_expr env expr in
+      Obj.get from attr
+  | Ast.This -> assert false
+  | Ast.Assign (Resolver.Var var, expr) ->
       let* value = eval_expr env expr in
-      Env.set id value env
+      Env.set var value env
+  | Ast.Assign (Resolver.Field (obj, attr), expr) ->
+      let* obj = eval_expr env obj and* expr = eval_expr env expr in
+      Obj.set obj attr expr
   | Ast.Logic (l, op, r) ->
       let* l = eval_expr env l in
       if Obj.to_bool l |> logic_op_condition op then Ok l else eval_expr env r
@@ -123,7 +139,7 @@ and eval_expr env expr =
       let* f = eval_expr env f in
       let* args = Result.map_l (eval_expr env) args in
       eval_apply env f args
-  | Ast.Lambda (params, body) ->
+  | Ast.Lambda { params; body } ->
       Ok
         (Obj.Function
            ( None,
@@ -170,12 +186,12 @@ and eval_stmt env stmt =
 and eval_decl env decl =
   let open Result.Infix in
   match decl with
-  | Ast.Var (((id', _) as id), value) ->
+  | Ast.Var (id, value) ->
       let+ value = eval_expr env value in
       let env = Env.define id value env in
-      Binding (id', value, env)
+      Binding (id, value, env)
   | Ast.Stmt stmt -> eval_stmt env stmt
-  | Ast.Fun (((id', _) as id), params, body) ->
+  | Ast.Fun (id, { params; body }) ->
       let func =
         Obj.Function
           ( Some id,
@@ -183,7 +199,30 @@ and eval_decl env decl =
           )
       in
       let env = Env.define id func env in
-      Ok (Binding (id', func, env))
+      Ok (Binding (id, func, env))
+  | Ast.Class (name, methods) ->
+      let methods =
+        List.to_seq methods
+        |> Seq.map (fun (name, { Ast.params; body }) ->
+               ( name,
+                 {
+                   Obj.arity = List.length params;
+                   params;
+                   body;
+                   env = Env.bindings env;
+                 } ))
+        |> Obj.Attr.of_seq
+      in
+      let klass =
+        Obj.Class
+          {
+            name;
+            init = Obj.Attr.find_opt methods @@ Id.of_string "init";
+            methods;
+          }
+      in
+      let env = Env.define name klass env in
+      Ok (Binding (name, klass, env))
 
 (* The type difference between this and [go] is on purpose;
    making them the same doesn't work. *)

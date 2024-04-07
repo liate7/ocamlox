@@ -25,7 +25,7 @@
 	open Ast_type
 %}
 
-%start <(Ast.literal, Ast.Id.t) Ast_type.t list> program
+%start <(Ast.literal, Ast.place) Ast_type.t list> program
 %%
 
 program:
@@ -37,16 +37,23 @@ declaration:
     { Var (Id.of_string id, e) }
   | d = definition { d }
   | s = statement
-    { Stmt s };
+    { Stmt s }
+  | c = class_ { c };
 
 definition:
   | DEFN; id = IDENTIFIER; fn = func
-    { let params, body = fn in
-      Fun (Id.of_string id, List.map ~f:Id.of_string params, body) }
+    { Fun (Id.of_string id, fn) };
 
 func:
   | "("; params = separated_list(",", IDENTIFIER); ")"; body = statement
-    { (params, body) }
+    { { params = List.map ~f:Id.of_string params; body } };
+
+class_:
+  | CLASS; id = IDENTIFIER; "{"; methods = methd*; "}"
+    { Class (Id.of_string id, methods) };
+
+methd:
+  | id = IDENTIFIER; f = func { Id.of_string id, f }
 
 block:
   | "{"; s = declaration*; "}" { s }
@@ -83,7 +90,9 @@ assignment:
     { Assign (p, e) }
   | e = logic_or { e };
 
-place: id = IDENTIFIER { Variable_p (Id.of_string id) };
+place:
+  | e = call; "."; id = IDENTIFIER { Field (e, Id.of_string id) }
+  | id = IDENTIFIER                { Variable_p (Id.of_string id) };
 
 logic_or:
   | l = logic_or; OR; r = logic_and
@@ -135,8 +144,10 @@ unary:
   | e = call       { e };
 
 call:
-  | f = primary; "("; args = separated_list(",", expression); ")"
+  | f = call; "("; args = separated_list(",", expression); ")"
     { Call (f, args) }
+  | o = call; "."; id = IDENTIFIER
+    { Variable (Field (o, Id.of_string id)) }
   | e = primary
     { e }
 
@@ -146,11 +157,11 @@ primary:
   | TRUE                     { Literal True }
   | FALSE                    { Literal False }
   | NIL                      { Literal Nil }
-  | id = IDENTIFIER          { Variable (Id.of_string id) }
+  | THIS                     { This }
+  | id = IDENTIFIER          { Variable (Variable_p (Id.of_string id)) }
   | lam = lambda             { lam }
   | "("; e = expression; ")" { Grouping e };
 
 lambda:
   | LAMBDA; fn = func
-    { let params, body = fn in
-      Lambda (List.map ~f:Id.of_string params, body) }
+    { Lambda fn }

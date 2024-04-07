@@ -1,3 +1,5 @@
+open Reader
+
 type t
 
 val of_eio_env :
@@ -7,9 +9,9 @@ val of_eio_env :
   t
 
 val of_function_env : t -> Obj.t Dict.t -> t
-val define : Resolver.id -> Obj.t -> t -> t
-val get : Resolver.id -> t -> (Obj.t, [> Error.t ]) result
-val set : Resolver.id -> Obj.t -> t -> (Obj.t, [> Error.t ]) result
+val define : Id.t -> Obj.t -> t -> t
+val get : Id.t * int option -> t -> (Obj.t, [> Error.t ]) result
+val set : Id.t * int option -> Obj.t -> t -> (Obj.t, [> Error.t ]) result
 val new_scope : t -> t
 val auth : t -> Auth.t
 val bindings : t -> Obj.t Dict.t

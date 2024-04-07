@@ -25,16 +25,19 @@ let literal_to_string = function
   | False -> "false"
   | Nil -> "nil"
 
-let place_to_sexp = function Variable_p id -> Sexp.atom @@ Id.to_string id
+let rec place_to_sexp = function
+  | Variable_p id -> Sexp.atom @@ Id.to_string id
+  | Field (expr, id) ->
+      Sexp.(list [ atom "obj_ref"; expr_to_sexp expr; atom @@ Id.to_string id ])
 
-let rec expr_to_sexp = function
+and expr_to_sexp : (literal, place) expr -> Sexp.t = function
   | Binary (l, op, r) ->
       Sexp.(list [ atom @@ binop_to_string op; expr_to_sexp l; expr_to_sexp r ])
   | Unary (op, expr) ->
       Sexp.(list [ atom @@ unary_op_to_string op; expr_to_sexp expr ])
   | Grouping expr -> expr_to_sexp expr
   | Literal lit -> Sexp.atom @@ literal_to_string lit
-  | Variable id -> Sexp.atom @@ Id.to_string id
+  | Variable id -> place_to_sexp id
   | Assign (p, expr) ->
       Sexp.(list [ atom "set!"; place_to_sexp p; expr_to_sexp expr ])
   | Logic (l, Or, r) ->
@@ -44,14 +47,12 @@ let rec expr_to_sexp = function
   | Call (f, args) ->
       Sexp.(
         list (atom "call" :: expr_to_sexp f :: List.map ~f:expr_to_sexp args))
-  | Lambda (params, body) ->
-      Sexp.(
-        list
-          [
-            atom "λ";
-            list (List.map ~f:Fun.(Id.to_string %> atom) params);
-            stmt_to_sexp body;
-          ])
+  | Lambda f -> Sexp.(list (atom "λ" :: func f))
+  | This -> Sexp.atom "this"
+
+and func { params; body } =
+  Sexp.
+    [ list (List.map ~f:Fun.(Id.to_string %> atom) params); stmt_to_sexp body ]
 
 and stmt_to_sexp = function
   | Expr e -> Sexp.(list [ atom "do"; expr_to_sexp e ])
@@ -71,14 +72,17 @@ and decl_to_sexp = function
   | Var (id, e) ->
       Sexp.(list [ atom "let"; atom @@ Id.to_string id; expr_to_sexp e ])
   | Stmt s -> stmt_to_sexp s
-  | Fun (id, params, body) ->
+  | Fun (id, f) -> Sexp.(list (atom "defn" :: atom (Id.to_string id) :: func f))
+  | Class (id, methods) ->
+      let method_to_sexp (id, f) =
+        Sexp.(list (atom (Id.to_string id) :: func f))
+      in
       Sexp.(
         list
           [
-            atom "defn";
-            atom (Id.to_string id);
-            list (List.map ~f:Fun.(Id.to_string %> atom) params);
-            stmt_to_sexp body;
+            atom "class";
+            atom @@ Id.to_string id;
+            list @@ List.map ~f:method_to_sexp methods;
           ])
 
 let to_sexp = decl_to_sexp

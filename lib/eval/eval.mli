@@ -22,5 +22,5 @@ type t = Value of Obj.t | Binding of Ast.Id.t * Obj.t * Env.t | Void
 
 val eval :
   Env.t ->
-  (Ast.literal, Id.t) Ast.t list ->
+  (Ast.literal, Ast.place) Ast.t list ->
   (Env.t * t list, [> error | `Return of Obj.t ]) result

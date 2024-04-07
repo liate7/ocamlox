@@ -10,7 +10,7 @@ let bindings t = t.bindings
 let globals =
   let builtin name arity fn =
     let id = Id.of_string name in
-    (id, Obj.Builtin ((id, None), arity, fn))
+    (id, Obj.Builtin (id, arity, fn))
   in
   Dict.of_seq
   @@ Seq.of_list
@@ -31,7 +31,7 @@ let of_eio_env env =
 
 let of_function_env env bindings = { bindings; auth = env.auth }
 
-let define (key, _) value ({ bindings; _ } as t) =
+let define key value ({ bindings; _ } as t) =
   (* traceln "%s" *)
   (*   [%string *)
   (* "defined %{Id.to_string key} as %{Obj.to_string value} (height \ *)

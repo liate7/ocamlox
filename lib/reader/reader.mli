@@ -10,7 +10,7 @@ type error =
 
 type 'a parser =
   Sedlexing.lexbuf ->
-  ((Ast.literal, Id.t) Ast.t list, ([> error ] as 'a)) result
+  ((Ast.literal, Ast.place) Ast.t list, ([> error ] as 'a)) result
 
 val parse : 'a parser
 (** Main parsing function. *)

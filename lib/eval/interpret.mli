@@ -5,5 +5,5 @@ type t = Value of Obj.t | Binding of Id.t * Obj.t * Env.t | Void
 
 val go :
   Env.t ->
-  (Ast.literal, Resolver.id) Ast.t list ->
+  (Ast.literal, Resolver.place) Ast.t list ->
   (Env.t * t list, [> Error.t | `Return of Obj.t ]) result

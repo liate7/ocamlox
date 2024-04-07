@@ -13,38 +13,6 @@ type binop =
 
 type unary_op = Negate | Not
 type logic_op = And | Or
-type 'var place = Variable_p of 'var
-
-type ('literal, 'var) expr =
-  | Binary of ('literal, 'var) expr * binop * ('literal, 'var) expr
-  | Unary of unary_op * ('literal, 'var) expr
-  | Grouping of ('literal, 'var) expr
-  | Assign of 'var place * ('literal, 'var) expr
-  | Logic of ('literal, 'var) expr * logic_op * ('literal, 'var) expr
-  | Call of ('literal, 'var) expr * ('literal, 'var) expr list
-  | Lambda of 'var list * ('literal, 'var) stmt
-  | Literal of 'literal
-  | Variable of 'var
-
-and ('literal, 'var) stmt =
-  | Expr of ('literal, 'var) expr
-  | Log of ('literal, 'var) expr list
-  | Block of ('literal, 'var) decl list
-  | If of {
-      condition : ('literal, 'var) expr;
-      if_true : ('literal, 'var) stmt;
-      if_false : ('literal, 'var) stmt option;
-    }
-  | While of { condition : ('literal, 'var) expr; body : ('literal, 'var) stmt }
-  | Return of ('literal, 'var) expr option
-
-and ('literal, 'var) decl =
-  | Var of 'var * ('literal, 'var) expr
-  | Fun of 'var * 'var list * ('literal, 'var) stmt
-  | Stmt of ('literal, 'var) stmt
-
-type ('literal, 'var) t = ('literal, 'var) decl
-type literal = Number of float | String of string | True | False | Nil
 
 module Id : sig
   type t
@@ -56,6 +24,48 @@ module Id : sig
   val to_string : t -> string
   val ( = ) : t -> t -> bool
 end
+
+type ('literal, 'place) expr =
+  | Binary of ('literal, 'place) expr * binop * ('literal, 'place) expr
+  | Unary of unary_op * ('literal, 'place) expr
+  | Grouping of ('literal, 'place) expr
+  | Assign of 'place * ('literal, 'place) expr
+  | Logic of ('literal, 'place) expr * logic_op * ('literal, 'place) expr
+  | Call of ('literal, 'place) expr * ('literal, 'place) expr list
+  | Lambda of ('literal, 'place) func
+  | This
+  | Literal of 'literal
+  | Variable of 'place
+
+and ('literal, 'place) func = {
+  params : Id.t list;
+  body : ('literal, 'place) stmt;
+}
+
+and ('literal, 'place) stmt =
+  | Expr of ('literal, 'place) expr
+  | Log of ('literal, 'place) expr list
+  | Block of ('literal, 'place) decl list
+  | If of {
+      condition : ('literal, 'place) expr;
+      if_true : ('literal, 'place) stmt;
+      if_false : ('literal, 'place) stmt option;
+    }
+  | While of {
+      condition : ('literal, 'place) expr;
+      body : ('literal, 'place) stmt;
+    }
+  | Return of ('literal, 'place) expr option
+
+and ('literal, 'place) decl =
+  | Var of Id.t * ('literal, 'place) expr
+  | Fun of Id.t * ('literal, 'place) func
+  | Stmt of ('literal, 'place) stmt
+  | Class of Id.t * (Id.t * ('literal, 'place) func) list
+
+type ('literal, 'place) t = ('literal, 'place) decl
+type literal = Number of float | String of string | True | False | Nil
+type place = Variable_p of Id.t | Field of (literal, place) expr * Id.t
 
 val number_lit : float -> (literal, 'a) expr
 val string_lit : string -> (literal, 'a) expr

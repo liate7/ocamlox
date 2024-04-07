@@ -13,4 +13,4 @@ type t = Interpret.t =
   | Void
 
 let eval env ast =
-  Result.(Returns_check.go ast >>= Resolver.go >>= Interpret.go env)
+  Result.(Init_fixer.go ast >>= Resolver.go >>= Interpret.go env)

@@ -7,13 +7,13 @@ open! ContainersLabels
 module I = Parser.MenhirInterpreter
 open Ast
 
-type checkpoint = (literal, Id.t) t list I.checkpoint
+type checkpoint = (literal, place) t list I.checkpoint
 
 type error =
   [ `Syntax of string | `Parsing of string | `Needs_input of checkpoint ]
 
 type 'a parser =
-  Sedlexing.lexbuf -> ((literal, Id.t) t list, ([> error ] as 'a)) result
+  Sedlexing.lexbuf -> ((literal, place) t list, ([> error ] as 'a)) result
 
 let lexing_pos_to_string ({ pos_lnum; pos_bol; pos_cnum; _ } : Lexing.position)
     =
