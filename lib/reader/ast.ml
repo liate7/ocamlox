@@ -26,9 +26,12 @@ let literal_to_string = function
   | Nil -> "nil"
 
 let rec place_to_sexp = function
-  | Variable_p id -> Sexp.atom @@ Id.to_string id
+  | Variable id -> Sexp.atom @@ Id.to_string id
   | Field (expr, id) ->
       Sexp.(list [ atom "obj_ref"; expr_to_sexp expr; atom @@ Id.to_string id ])
+  | This -> Sexp.atom "this"
+  | Super attr ->
+      Sexp.(list [ atom "obj_ref"; atom "super"; atom @@ Id.to_string attr ])
 
 and expr_to_sexp : (literal, place) expr -> Sexp.t = function
   | Binary (l, op, r) ->
@@ -37,7 +40,7 @@ and expr_to_sexp : (literal, place) expr -> Sexp.t = function
       Sexp.(list [ atom @@ unary_op_to_string op; expr_to_sexp expr ])
   | Grouping expr -> expr_to_sexp expr
   | Literal lit -> Sexp.atom @@ literal_to_string lit
-  | Variable id -> place_to_sexp id
+  | Get id -> place_to_sexp id
   | Assign (p, expr) ->
       Sexp.(list [ atom "set!"; place_to_sexp p; expr_to_sexp expr ])
   | Logic (l, Or, r) ->
@@ -48,7 +51,6 @@ and expr_to_sexp : (literal, place) expr -> Sexp.t = function
       Sexp.(
         list (atom "call" :: expr_to_sexp f :: List.map ~f:expr_to_sexp args))
   | Lambda f -> Sexp.(list (atom "λ" :: func f))
-  | This -> Sexp.atom "this"
 
 and func { params; body } =
   Sexp.
@@ -73,7 +75,7 @@ and decl_to_sexp = function
       Sexp.(list [ atom "let"; atom @@ Id.to_string id; expr_to_sexp e ])
   | Stmt s -> stmt_to_sexp s
   | Fun (id, f) -> Sexp.(list (atom "defn" :: atom (Id.to_string id) :: func f))
-  | Class (id, methods) ->
+  | Class { name; superclass; methods } ->
       let method_to_sexp (id, f) =
         Sexp.(list (atom (Id.to_string id) :: func f))
       in
@@ -81,7 +83,8 @@ and decl_to_sexp = function
         list
           [
             atom "class";
-            atom @@ Id.to_string id;
+            atom @@ Id.to_string name;
+            list Option.(map place_to_sexp superclass |> to_list);
             list @@ List.map ~f:method_to_sexp methods;
           ])
 

@@ -19,7 +19,12 @@ and func = {
   body : (Ast.literal, Resolver.place) Ast.stmt;
 }
 
-and klass = { name : Id.t; init : func option; methods : func Attr.t }
+and klass = {
+  name : Id.t;
+  superclass : klass option;
+  init : func option;
+  methods : func Attr.t;
+}
 
 let to_string ?(readable = true) = function
   | Nil -> "nil"
@@ -75,14 +80,26 @@ let bind inst { arity; params; env; body } =
   Dict.add env (Id.of_string "this") inst;
   Function (None, { arity; params; env; body })
 
-let get obj attr =
-  match obj with
-  | Object ({ methods; _ }, attrs) ->
+let get ?(super : t option) obj attr =
+  let rec class_method { methods; superclass; _ } =
+    match (Attr.find_opt methods attr, superclass) with
+    | Some methd, _ -> Option.some @@ bind obj methd
+    | None, Some super -> class_method super
+    | None, None -> None
+  in
+  match (super, obj) with
+  | Some (Class super), Object _ ->
+      class_method super
+      |> Option.map_or Result.return
+           ~default:
+             (Error.of_string
+                [%string "undefined attribute %{Id.to_string attr}"])
+  | Some super, Object _ ->
+      Error.of_string
+        [%string "%{to_string super} is not a class, how did you do this"]
+  | None, Object (klass, attrs) ->
       Attr.find_opt attrs attr
-      |> Option.or_lazy ~else_:(fun () ->
-             let open Option.Infix in
-             let+ methd = Attr.find_opt methods attr in
-             bind obj methd)
+      |> Option.or_lazy ~else_:(fun () -> class_method klass)
       |> Option.map_or Result.return
            ~default:
              (Error.of_string

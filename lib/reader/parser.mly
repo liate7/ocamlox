@@ -33,27 +33,33 @@ program:
   | EOF { [] };
 
 declaration:
-  | LET; id = IDENTIFIER; "="; e = expression; ";"
-    { Var (Id.of_string id, e) }
+  | LET; id = id; "="; e = expression; ";"
+    { Var (id, e) }
   | d = definition { d }
   | s = statement
     { Stmt s }
   | c = class_ { c };
 
 definition:
-  | DEFN; id = IDENTIFIER; fn = func
-    { Fun (Id.of_string id, fn) };
+  | DEFN; id = id; fn = func
+    { Fun (id, fn) };
 
 func:
-  | "("; params = separated_list(",", IDENTIFIER); ")"; body = statement
-    { { params = List.map ~f:Id.of_string params; body } };
+  | "("; params = separated_list(",", id); ")"; body = statement
+    { { params; body } };
 
 class_:
-  | CLASS; id = IDENTIFIER; "{"; methods = methd*; "}"
-    { Class (Id.of_string id, methods) };
+  | CLASS; id = id; superclass = preceded("<", id)?;
+    "{"; methods = methd*; "}"
+    { Class {
+		  name = id;
+		  superclass = Option.map (fun i -> Variable i) superclass;
+		  methods
+		}
+	};
 
 methd:
-  | id = IDENTIFIER; f = func { Id.of_string id, f }
+  | id = id; f = func { id, f }
 
 block:
   | "{"; s = declaration*; "}" { s }
@@ -91,8 +97,8 @@ assignment:
   | e = logic_or { e };
 
 place:
-  | e = call; "."; id = IDENTIFIER { Field (e, Id.of_string id) }
-  | id = IDENTIFIER                { Variable_p (Id.of_string id) };
+  | e = call; "."; id = id { Field (e, id) }
+  | id = id                { Variable id };
 
 logic_or:
   | l = logic_or; OR; r = logic_and
@@ -146,8 +152,8 @@ unary:
 call:
   | f = call; "("; args = separated_list(",", expression); ")"
     { Call (f, args) }
-  | o = call; "."; id = IDENTIFIER
-    { Variable (Field (o, Id.of_string id)) }
+  | o = call; "."; id = id
+    { Get (Field (o, id)) }
   | e = primary
     { e }
 
@@ -157,11 +163,14 @@ primary:
   | TRUE                     { Literal True }
   | FALSE                    { Literal False }
   | NIL                      { Literal Nil }
-  | THIS                     { This }
-  | id = IDENTIFIER          { Variable (Variable_p (Id.of_string id)) }
+  | THIS                     { Get This }
+  | SUPER "." attr = id      { Get (Super attr) }
+  | id = id                  { Get (Variable id) }
   | lam = lambda             { lam }
   | "("; e = expression; ")" { Grouping e };
 
 lambda:
   | LAMBDA; fn = func
     { Lambda fn }
+
+id: id = IDENTIFIER { Id.of_string id }

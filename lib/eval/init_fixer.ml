@@ -23,9 +23,17 @@ let rec decl_search in_init (d : (Ast.literal, Ast.place) Ast.decl) =
   | Ast.Fun (id, { params; body }) ->
       let+ body = stmt_search false body in
       Ast.Fun (id, { Ast.params; body })
-  | Ast.Class (id, methods) ->
+  | Ast.Class { name; superclass; methods } ->
       let+ methods = Result.map_l method_search methods in
-      Ast.Class (id, methods)
+      Ast.Class { name; superclass; methods }
+
+and method_search (id, { params; body }) =
+  let in_init = Id.(init = id) in
+  let+ body = stmt_search in_init body in
+  let body =
+    if in_init then append_body body Ast.(Return (Some (Get This))) else body
+  in
+  (id, { Ast.params; body })
 
 and stmt_search in_init s =
   match s with
@@ -52,7 +60,7 @@ and stmt_search in_init s =
       Ast.While { condition; body }
   | Ast.Return e -> (
       match (in_init, e) with
-      | true, None -> Ok (Ast.Return (Some Ast.This))
+      | true, None -> Ok (Ast.Return (Some Ast.(Get This)))
       | true, Some _ ->
           Error.of_string "can't return a value from an initializer"
       | false, None -> Ok (Ast.Return None)
@@ -69,12 +77,15 @@ and expr_search e =
       let+ e = expr_search e in
       Ast.Unary (op, e)
   | Ast.Grouping e -> expr_search e
-  | Ast.Assign (Ast.Variable_p id, e) ->
+  | Ast.Assign (Ast.Variable id, e) ->
       let+ e = expr_search e in
-      Ast.Assign (Ast.Variable_p id, e)
+      Ast.Assign (Ast.Variable id, e)
   | Ast.Assign (Ast.Field (obj, id), e) ->
       let+ obj = expr_search obj and+ e = expr_search e in
       Ast.Assign (Ast.Field (obj, id), e)
+  | Ast.Assign (((Ast.Super _ | Ast.This) as place), e) ->
+      let+ e = expr_search e in
+      Ast.Assign (place, e)
   | Ast.Logic (l, op, r) ->
       let+ l = expr_search l and+ r = expr_search r in
       Ast.Logic (l, op, r)
@@ -84,13 +95,9 @@ and expr_search e =
   | Ast.Lambda { params; body } ->
       let+ body = stmt_search false body in
       Ast.Lambda { Ast.params; body }
-  | Ast.This | Ast.Literal _ | Ast.Variable (Ast.Variable_p _) -> Ok e
-  | Ast.Variable (Ast.Field (e, id)) ->
+  | Ast.Literal _ | Ast.Get (Ast.Variable _ | Ast.Super _ | Ast.This) -> Ok e
+  | Ast.Get (Ast.Field (e, id)) ->
       let+ e = expr_search e in
-      Ast.(Variable (Field (e, id)))
-
-and method_search (id, { params; body }) =
-  let+ body = stmt_search Id.(init = id) body in
-  (id, { Ast.params; body = append_body body Ast.(Return (Some This)) })
+      Ast.(Get (Field (e, id)))
 
 let go ast = Result.map_l (decl_search false) ast

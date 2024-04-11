@@ -32,9 +32,8 @@ type ('literal, 'place) expr =
   | Logic of ('literal, 'place) expr * logic_op * ('literal, 'place) expr
   | Call of ('literal, 'place) expr * ('literal, 'place) expr list
   | Lambda of ('literal, 'place) func
-  | This
   | Literal of 'literal
-  | Variable of 'place
+  | Get of 'place
 
 and ('literal, 'place) func = {
   params : Id.t list;
@@ -60,11 +59,20 @@ and ('literal, 'place) decl =
   | Var of Id.t * ('literal, 'place) expr
   | Fun of Id.t * ('literal, 'place) func
   | Stmt of ('literal, 'place) stmt
-  | Class of Id.t * (Id.t * ('literal, 'place) func) list
+  | Class of {
+      name : Id.t;
+      superclass : 'place option;
+      methods : (Id.t * ('literal, 'place) func) list;
+    }
 
 type ('literal, 'place) t = ('literal, 'place) decl
 type literal = Number of float | String of string | True | False | Nil
-type place = Variable_p of Id.t | Field of (literal, place) expr * Id.t
+
+type place =
+  | Variable of Id.t
+  | Field of (literal, place) expr * Id.t
+  | This
+  | Super of Id.t
 
 let number_lit f = Literal (Number f)
 let string_lit s = Literal (String s)

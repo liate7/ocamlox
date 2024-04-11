@@ -4,6 +4,11 @@ open Reader
 type place =
   | Var of (Id.t * int option)
   | Field of (Ast.literal, place) Ast.expr * Id.t
+  | Super of {
+      super : Id.t * int option;
+      this : Id.t * int option;
+      attr : Id.t;
+    }
 
 type t = (Ast.literal, place) Ast.t
 type input = (Ast.literal, Ast.place) Ast.t
@@ -12,7 +17,7 @@ module Map = Map.Make (Id)
 open Result.Infix
 
 type function_type = Top | Function
-type obj_type = Class | Not
+type obj_type = Class | Subclass | Not
 
 let declare scopes name =
   match scopes with [] -> [] | cur :: rest -> Map.add name false cur :: rest
@@ -25,10 +30,10 @@ let declaring scopes name =
 let define scopes name =
   match scopes with [] -> [] | cur :: rest -> Map.add name true cur :: rest
 
-let transform_var scopes var : place =
+let transform_var scopes var =
   let rec loop acc = function
-    | [] -> Var (var, None)
-    | cur :: _ when Map.mem var cur -> Var (var, Some acc)
+    | [] -> (var, None)
+    | cur :: _ when Map.mem var cur -> (var, Some acc)
     | _ :: rest -> loop (acc + 1) rest
   in
   loop 0 scopes
@@ -46,16 +51,35 @@ let rec decl ftype otype scopes :
   | Ast.Stmt s ->
       let+ s = stmt ftype otype scopes s in
       (scopes, Ast.Stmt s)
-  | Ast.Class (name, methods) ->
+  | Ast.Class { name; superclass; methods } ->
+      let superclass =
+        Option.map
+          (function
+            | Ast.Variable var -> Var (transform_var scopes var)
+            | _ -> assert false)
+          superclass
+      in
       let scopes = define (declare scopes name) name
       and names, funcs = List.split methods in
-      let inner = Map.singleton (Id.of_string "this") true :: scopes in
-      let inner =
-        List.fold_left names ~init:inner ~f:(fun scopes name ->
-            define (declare scopes name) name)
+      let class_scope =
+        match superclass with
+        | Some _ -> Map.singleton (Id.of_string "super") true :: scopes
+        | None -> scopes
       in
-      let+ funcs = Result.map_l (handle_func Class inner) funcs in
-      (scopes, Ast.Class (name, List.combine names funcs))
+      let inner =
+        List.fold_left names
+          ~init:(Map.singleton (Id.of_string "this") true :: class_scope)
+          ~f:(fun scopes name -> define (declare scopes name) name)
+      in
+      let+ funcs =
+        Result.map_l
+          (handle_func
+             (match superclass with None -> Class | Some _ -> Subclass)
+             inner)
+          funcs
+      in
+      ( scopes,
+        Ast.Class { name; superclass; methods = List.combine names funcs } )
 
 and handle_func otype scopes { params; body } =
   let inner = List.fold_left ~init:(Map.empty :: scopes) ~f:define params in
@@ -109,13 +133,9 @@ and expr otype scopes = function
   | Ast.Grouping e ->
       let+ e = expr otype scopes e in
       Ast.Grouping e
-  | Ast.Assign (Ast.Variable_p id, e) ->
-      let+ e = expr otype scopes e in
-      let var = transform_var scopes id in
-      Ast.Assign (var, e)
-  | Ast.Assign (Ast.Field (obj, attr), e) ->
-      let+ obj = expr otype scopes obj and+ e = expr otype scopes e in
-      Ast.Assign (Field (obj, attr), e)
+  | Ast.Assign (p, e) ->
+      let+ p = place otype scopes p and+ e = expr otype scopes e in
+      Ast.Assign (p, e)
   | Ast.Logic (l, op, r) ->
       let+ l = expr otype scopes l and+ r = expr otype scopes r in
       Ast.Logic (l, op, r)
@@ -127,19 +147,37 @@ and expr otype scopes = function
       let+ f = handle_func otype scopes f in
       Ast.Lambda f
   | Ast.Literal lit -> Ok (Ast.Literal lit)
-  | Ast.Variable (Ast.Variable_p var) ->
+  | Ast.Get p ->
+      let+ p = place otype scopes p in
+      Ast.Get p
+
+and place otype scopes = function
+  | Variable var ->
       if declaring scopes var then
         Error.of_string
           [%string
             {|can't reference "%{Id.to_string var}" while shadowing it.|}]
-      else Ok (Ast.Variable (transform_var scopes var))
-  | Ast.Variable (Ast.Field (e, attr)) ->
-      let+ e = expr otype scopes e in
-      Ast.Variable (Field (e, attr))
+      else Ok (Var (transform_var scopes var))
   | Ast.This -> (
       match otype with
-      | Class -> Ok (Ast.Variable (transform_var scopes @@ Id.of_string "this"))
+      | Class | Subclass ->
+          Ok (Var (transform_var scopes @@ Id.of_string "this"))
       | Not -> Error.of_string {|can't reference "this" outside a class|})
+  | Ast.Field (obj, attr) ->
+      let+ obj = expr otype scopes obj in
+      Field (obj, attr)
+  | Ast.Super attr -> (
+      match otype with
+      | Subclass ->
+          Ok
+            (Super
+               {
+                 super = transform_var scopes @@ Id.of_string "super";
+                 this = transform_var scopes @@ Id.of_string "this";
+                 attr;
+               })
+      | Class | Not ->
+          Error.of_string {|can't reference "super" outside a class|})
 
 let go ast =
   let+ scopes, ast =

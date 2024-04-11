@@ -59,25 +59,7 @@ let eval_literal =
 
 let logic_op_condition = function Ast.Or -> Fun.id | Ast.And -> not
 
-let rec non_builtin_apply env { Obj.arity; params; env = closure; body } args =
-  if List.length args <> arity then
-    Error.of_string
-      [%string
-        "arity mismatch: expected %{Int.to_string arity} args, got \
-         %{Int.to_string @@ List.length args}"]
-  else
-    let env =
-      List.fold_left2
-        ~init:Env.(of_function_env env closure |> new_scope)
-        params args
-        ~f:(fun env name value -> Env.define name value env)
-    in
-    match eval_stmt env body with
-    | Ok _ -> Ok Obj.Nil
-    | Error (`Return ret) -> Ok ret
-    | Error _ as err -> err
-
-and eval_body env decls =
+let rec eval_body env decls =
   let open Result.Infix in
   let f (env, acc) decl =
     let+ result = eval_decl env decl in
@@ -99,16 +81,26 @@ and eval_apply env f args =
   match f with
   | Builtin (_, arity, f) when arity = List.length args ->
       f (Env.auth env) args |> Result.map_err (fun s -> `Error s)
-  | Builtin (_, arity, _) -> arity_mismatch arity args
-  | Function (_, f) -> non_builtin_apply env f args
+  | Function (_, { arity; params; env = closure; body })
+    when arity = List.length args -> (
+      let env =
+        List.fold_left2 params args
+          ~init:Env.(of_function_env env closure |> new_scope)
+          ~f:(fun env name value -> Env.define name value env)
+      in
+      match eval_stmt env body with
+      | Ok _ -> Ok Obj.Nil
+      | Error (`Return ret) -> Ok ret
+      | Error _ as err -> err)
   | Class ({ init; _ } as c) -> (
-      let open Result.Infix in
       let obj = Object (c, Attr.create 4) in
       match init with
-      | Some init -> eval_apply env (Obj.bind obj init) args >|= Fun.const obj
+      | Some init -> eval_apply env (Obj.bind obj init) args
       | None when List.length args = 0 -> Ok obj
       | None -> arity_mismatch 0 args)
-  | _ -> Error.of_string "can't call this; can only call functions"
+  | Builtin (_, arity, _) | Function (_, { arity; _ }) ->
+      arity_mismatch arity args
+  | _ -> Error.of_string "can't call this; can only call functions and classes"
 
 and eval_expr env expr =
   let open Result.Infix in
@@ -121,16 +113,21 @@ and eval_expr env expr =
       eval_unary_op env op value
   | Ast.Grouping expr -> eval_expr env expr
   | Ast.Literal lit -> Ok (eval_literal lit)
-  | Ast.Variable (Resolver.Var var) -> Env.get var env
-  | Ast.Variable (Resolver.Field (expr, attr)) ->
+  | Ast.Get (Resolver.Var var) -> Env.get var env
+  | Ast.Get (Resolver.Field (expr, attr)) ->
       let* from = eval_expr env expr in
       Obj.get from attr
-  | Ast.This -> assert false
+  | Ast.Get (Resolver.Super { super; this; attr }) ->
+      let* this = Env.get this env and* super = Env.get super env in
+      Obj.get ~super this attr
   | Ast.Assign (Resolver.Var var, expr) ->
       let* value = eval_expr env expr in
       Env.set var value env
   | Ast.Assign (Resolver.Field (obj, attr), expr) ->
       let* obj = eval_expr env obj and* expr = eval_expr env expr in
+      Obj.set obj attr expr
+  | Ast.Assign (Resolver.Super { super = _; this; attr }, expr) ->
+      let* obj = Env.get this env and* expr = eval_expr env expr in
       Obj.set obj attr expr
   | Ast.Logic (l, op, r) ->
       let* l = eval_expr env l in
@@ -200,7 +197,23 @@ and eval_decl env decl =
       in
       let env = Env.define id func env in
       Ok (Binding (id, func, env))
-  | Ast.Class (name, methods) ->
+  | Ast.Class { name; superclass; methods } ->
+      let+ superclass =
+        Result.opt_map
+          (function
+            | Resolver.Var name -> (
+                Env.get name env >>= function
+                | Class c -> Ok c
+                | _ -> Error.of_string "superclass must be a class")
+            | _ -> assert false)
+          superclass
+      in
+      let method_env =
+        match superclass with
+        | None -> env
+        | Some super ->
+            Env.new_scope env |> Env.define (Id.of_string "super") (Class super)
+      in
       let methods =
         List.to_seq methods
         |> Seq.map (fun (name, { Ast.params; body }) ->
@@ -209,7 +222,7 @@ and eval_decl env decl =
                    Obj.arity = List.length params;
                    params;
                    body;
-                   env = Env.bindings env;
+                   env = Env.bindings method_env;
                  } ))
         |> Obj.Attr.of_seq
       in
@@ -217,12 +230,13 @@ and eval_decl env decl =
         Obj.Class
           {
             name;
+            superclass;
             init = Obj.Attr.find_opt methods @@ Id.of_string "init";
             methods;
           }
       in
       let env = Env.define name klass env in
-      Ok (Binding (name, klass, env))
+      Binding (name, klass, env)
 
 (* The type difference between this and [go] is on purpose;
    making them the same doesn't work. *)
