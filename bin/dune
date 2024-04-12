@@ -1,4 +1,12 @@
 (executable
  (public_name ocamlox)
  (name main)
+ (modules main)
  (libraries ocamlox eio eio_main eio_linux containers cmdliner))
+
+(executable
+ (public_name generate_tests)
+ (name generate)
+ (modules generate)
+ (libraries eio eio_main eio_linux cmdliner containers)
+ (preprocess (pps ppx_string)))

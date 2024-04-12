@@ -1,2 +1,6 @@
-(test
- (name test_ocamlox))
+(library
+ (name test_ocamlox)
+ (libraries ocamlox eio eio_main eio_linux)
+ (inline_tests)
+ (preprocess
+  (pps ppx_expect)))

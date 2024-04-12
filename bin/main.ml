@@ -2,9 +2,15 @@ open! ContainersLabels
 open! Eio.Std
 
 let run file =
-  Eio_main.run
-  @@
-  match file with None -> Ocamlox.repl | Some file -> Ocamlox.eval_file file
+  Eio_main.run @@ fun env ->
+  match file with
+  | None -> Ocamlox.repl env
+  | Some file ->
+      let file =
+        if Filename.is_relative file then Eio.Path.(Eio.Stdenv.cwd env / file)
+        else Eio.Path.(Eio.Stdenv.fs env / file)
+      in
+      Eio.Path.with_open_in file @@ fun file -> Ocamlox.eval_file file env
 
 let () =
   let open Cmdliner in
