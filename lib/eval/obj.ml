@@ -54,19 +54,18 @@ let to_bool = function
 
 let to_float = function Number n -> Ok n | _ -> Error.of_string "Not a number"
 
-let compare l r =
-  let cmp_variant_of_int n =
-    if n > 0 then `Greater_than
-    else if n < 0 then `Less_than
-    else if n = 0 then `Equal
-    else `Incomparable
-  in
+let equal l r =
   match (l, r) with
-  | Nil, Nil -> `Equal
-  | Bool l, Bool r -> Bool.compare l r |> cmp_variant_of_int
-  | Number l, Number r -> Float.compare l r |> cmp_variant_of_int
-  | String l, String r -> String.compare l r |> cmp_variant_of_int
-  | _, _ -> `Incomparable
+  | Nil, Nil -> true
+  | Bool l, Bool r -> Bool.equal l r
+  | Number l, Number r -> Float.equal l r
+  | String l, String r -> String.equal l r
+  | Builtin (l_name, _, l_func), Builtin (r_name, _, r_func) ->
+      Id.equal l_name r_name && Equal.physical l_func r_func
+  | Function (_, l), Function (_, r) -> Equal.physical l r
+  | Class l, Class r -> Equal.physical l r
+  | Object (_, l), Object (_, r) -> Equal.physical l r
+  | _, _ -> false
 
 let ( + ) =
   Fun.curry (function
@@ -75,15 +74,15 @@ let ( + ) =
     | l, r ->
         Error.of_string [%string "can't add %{to_string l} with %{to_string r}"])
 
-let bind inst { arity; params; env; body } =
+let bind inst { arity; params; env; body } name =
   let env = Dict.child_of env in
   Dict.add env (Id.of_string "this") inst;
-  Function (None, { arity; params; env; body })
+  Function (Some name, { arity; params; env; body })
 
 let get ?(super : t option) obj attr =
   let rec class_method { methods; superclass; _ } =
     match (Attr.find_opt methods attr, superclass) with
-    | Some methd, _ -> Option.some @@ bind obj methd
+    | Some methd, _ -> Option.some @@ bind obj methd attr
     | None, Some super -> class_method super
     | None, None -> None
   in

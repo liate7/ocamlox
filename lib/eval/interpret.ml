@@ -6,40 +6,23 @@ type t = Value of Obj.t | Binding of Id.t * Obj.t * Env.t | Void
 
 let eval_binary_op _env op l r =
   let open Result.Infix in
-  let do_arith f l r =
+  let do_arith f l r k =
     let open Obj in
     let* l = to_float l and* r = to_float r in
-    Ok (Obj.Number (f l r))
-  in
+    Ok (k (f l r))
+  and number n = Obj.Number n
+  and bool b = Obj.Bool b in
   match op with
-  | Ast.Equal ->
-      Ok Obj.(compare l r |> function `Equal -> Bool true | _ -> Bool false)
-  | Ast.Not_equal ->
-      Ok Obj.(compare l r |> function `Equal -> Bool false | _ -> Bool true)
-  | Ast.Less_than ->
-      Ok
-        Obj.(
-          compare l r |> function `Less_than -> Bool true | _ -> Bool false)
-  | Ast.Less_equal ->
-      Ok
-        Obj.(
-          compare l r |> function
-          | `Equal | `Less_than -> Bool true
-          | _ -> Bool false)
-  | Ast.Greater_than ->
-      Ok
-        Obj.(
-          compare l r |> function `Greater_than -> Bool true | _ -> Bool false)
-  | Ast.Greater_equal ->
-      Ok
-        Obj.(
-          compare l r |> function
-          | `Equal | `Greater_than -> Bool true
-          | _ -> Bool false)
+  | Ast.Equal -> Ok (Obj.equal l r |> bool)
+  | Ast.Not_equal -> Ok (Obj.equal l r |> not |> bool)
+  | Ast.Less_than -> do_arith Float.( < ) l r bool
+  | Ast.Less_equal -> do_arith Float.( <= ) l r bool
+  | Ast.Greater_than -> do_arith Float.( > ) l r bool
+  | Ast.Greater_equal -> do_arith Float.( >= ) l r bool
   | Ast.Plus -> Obj.(l + r)
-  | Ast.Minus -> do_arith Float.( - ) l r
-  | Ast.Times -> do_arith Float.( * ) l r
-  | Ast.Div -> do_arith Float.( / ) l r
+  | Ast.Minus -> do_arith Float.( - ) l r number
+  | Ast.Times -> do_arith Float.( * ) l r number
+  | Ast.Div -> do_arith Float.( / ) l r number
   | Ast.Comma -> Ok r
 
 let eval_unary_op _env op value =
@@ -95,7 +78,8 @@ and eval_apply env f args =
   | Class ({ init; _ } as c) -> (
       let obj = Object (c, Attr.create 4) in
       match init with
-      | Some init -> eval_apply env (Obj.bind obj init) args
+      | Some init ->
+          eval_apply env (Obj.bind obj init @@ Id.of_string "init") args
       | None when List.length args = 0 -> Ok obj
       | None -> arity_mismatch 0 args)
   | Builtin (_, arity, _) | Function (_, { arity; _ }) ->
@@ -226,15 +210,13 @@ and eval_decl env decl =
                  } ))
         |> Obj.Attr.of_seq
       in
-      let klass =
-        Obj.Class
-          {
-            name;
-            superclass;
-            init = Obj.Attr.find_opt methods @@ Id.of_string "init";
-            methods;
-          }
+      let init =
+        let open Option.Infix in
+        Obj.Attr.find_opt methods @@ Id.of_string "init"
+        |> Option.or_lazy ~else_:(fun () ->
+               superclass >>= fun { init; _ } -> init)
       in
+      let klass = Obj.Class { name; superclass; init; methods } in
       let env = Env.define name klass env in
       Binding (name, klass, env)
 

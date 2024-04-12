@@ -14,30 +14,30 @@ let float =
 
 (* Other more complicated things *)
 let identifier = [%sedlex.regexp? (id_start | '_'), Star id_continue]
-let comment = [%sedlex.regexp? "//", Star (Compl nl)]
+let comment = [%sedlex.regexp? "//", Star (Compl '\n')]
 
 let rec read lexbuf =
   match%sedlex lexbuf with
-  | white_space -> read lexbuf
-  | nl | comment ->
+  | Opt comment, '\n' | comment ->
       new_line lexbuf;
       read lexbuf
+  | Plus white_space -> read lexbuf
   | float -> NUMBER (float_of_string @@ Utf8.lexeme lexbuf)
   | "and" -> AND
   | "class" -> CLASS
   | "false" -> FALSE
-  | "defn" -> DEFN
+  | "fun" -> DEFN
   | "for" -> FOR
   | "if" -> IF
   | "else" -> ELSE
   | "nil" -> NIL
   | "or" -> OR
-  | "log" -> LOG
+  | "print" -> LOG
   | "return" -> RETURN
   | "super" -> SUPER
   | "this" -> THIS
   | "true" -> TRUE
-  | "let" -> LET
+  | "var" -> LET
   | "while" -> WHILE
   | "\\" -> LAMBDA
   | '"' -> read_string (Buffer.create 17) lexbuf

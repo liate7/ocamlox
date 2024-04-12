@@ -35,8 +35,8 @@ and klass = {
 val to_string : ?readable:bool -> t -> string
 val to_bool : t -> bool
 val to_float : t -> (float, [> Error.t ]) result
-val compare : t -> t -> [> `Greater_than | `Less_than | `Equal | `Incomparable ]
+val equal : t -> t -> bool
 val ( + ) : t -> t -> (t, [> Error.t ]) result
 val get : ?super:t -> t -> Id.t -> (t, [> Error.t ]) result
 val set : t -> Id.t -> t -> (t, [> Error.t ]) result
-val bind : t -> func -> t
+val bind : t -> func -> Id.t -> t

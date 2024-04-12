@@ -18,13 +18,9 @@ let error_to_string = function
   | `Error str -> "Evaluation error: " ^ str
   | `Return _ -> "Evaluation error: tried to return from toplevel"
 
-let eval_file path env =
-  let file =
-    if Filename.is_relative path then Eio.Path.(Eio.Stdenv.cwd env / path)
-    else Eio.Path.(Eio.Stdenv.fs env / path)
-  and env = Eval.Env.of_eio_env env in
-  Eio.Path.with_open_in file Eio.Buf_read.(parse take_all ~max_size:Int.max_int)
-  >>= eval_string env
+let eval_file flow env =
+  let env = Eval.Env.of_eio_env env in
+  Eio.Buf_read.(parse take_all ~max_size:Int.max_int) flow >>= eval_string env
   |> function
   | Ok _ -> Ok 0
   | Error err -> Error (error_to_string err)

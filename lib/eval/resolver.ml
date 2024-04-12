@@ -51,6 +51,9 @@ let rec decl ftype otype scopes :
   | Ast.Stmt s ->
       let+ s = stmt ftype otype scopes s in
       (scopes, Ast.Stmt s)
+  | Ast.Class { name; superclass = Some (Variable super); _ }
+    when Id.(name = super) ->
+      Error.of_string "a class can't inherit from itself."
   | Ast.Class { name; superclass; methods } ->
       let superclass =
         Option.map
@@ -82,9 +85,21 @@ let rec decl ftype otype scopes :
         Ast.Class { name; superclass; methods = List.combine names funcs } )
 
 and handle_func otype scopes { params; body } =
-  let inner = List.fold_left ~init:(Map.empty :: scopes) ~f:define params in
-  let+ body = stmt Function otype inner body in
-  { Ast.params; body }
+  let duplicate_params =
+    params
+    |> List.map ~f:(fun x -> (x, 1))
+    |> Map.of_list_with ~f:(Fun.const ( + ))
+    |> Map.filter (Fun.const (( < ) 1))
+  in
+  if Map.is_empty duplicate_params then
+    let inner = List.fold_left ~init:(Map.empty :: scopes) ~f:define params in
+    let+ body = stmt Function otype inner body in
+    { Ast.params; body }
+  else
+    Error.of_string
+      [%string
+        "can't write a function with duplicate parameters (parameters: \
+         %{params |> List.to_string Id.to_string})"]
 
 and stmt ftype otype scopes = function
   | Ast.Expr e ->
@@ -176,8 +191,10 @@ and place otype scopes = function
                  this = transform_var scopes @@ Id.of_string "this";
                  attr;
                })
-      | Class | Not ->
-          Error.of_string {|can't reference "super" outside a class|})
+      | Class ->
+          Error.of_string
+            {|can't reference "super" in a class with no superclass|}
+      | Not -> Error.of_string {|can't reference "super" outside a class|})
 
 let go ast =
   let+ scopes, ast =
