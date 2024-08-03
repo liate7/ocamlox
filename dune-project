@@ -7,13 +7,13 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github liate7/ocamlox))
 
 (authors "Andrew Patterson")
 
 (maintainers "Andrew Patterson")
 
-(license LICENSE)
+(license MIT)
 
 (documentation https://url/to/documentation)
 
